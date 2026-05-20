@@ -9,17 +9,22 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score, mean_absolute_error
 
-
-# Custom progress bar (no extra libraries)
+#pip install scikit-learn
+# Progress Bar
 def progress_bar(task, steps=30, delay=0.03):
+
     print(f"\n{task}")
+
     for i in range(steps + 1):
+
         percent = int((i / steps) * 100)
+
         bar = "█" * i + "-" * (steps - i)
 
         sys.stdout.write(
             f"\r[{bar}] {percent}%"
         )
+
         sys.stdout.flush()
 
         time.sleep(delay)
@@ -27,80 +32,149 @@ def progress_bar(task, steps=30, delay=0.03):
     print(" Done ✓")
 
 
-print("Loading dataset...")
+print("Loading Dataset...")
 progress_bar("Reading Data")
 
-df = pd.read_csv("car_prediction_data.csv")
+df = pd.read_csv(
+    "car_prediction_data.csv"
+)
 
-# Better feature than raw year
+# Feature Engineering
 current_year = 2025
-df["Car_Age"] = current_year - df["Year"]
 
-# Remove Year after creating age
-df.drop("Year", axis=1, inplace=True)
+df["Car_Age"] = (
+    current_year -
+    df["Year"]
+)
 
-print("\nRecords:", len(df))
+# Target = depreciation
+df["Depreciation"] = (
+    df["Present_Price"] -
+    df["Selling_Price"]
+)
 
-progress_bar("Preprocessing Data")
+df.drop(
+    "Year",
+    axis=1,
+    inplace=True
+)
 
-X = df.drop("Selling_Price", axis=1)
-y = df["Selling_Price"]
+print(
+    "\nRecords:",
+    len(df)
+)
+
+progress_bar(
+    "Preprocessing Data"
+)
+
+X = df.drop(
+    ["Selling_Price", "Depreciation"],
+    axis=1
+)
+
+y = df["Depreciation"]
+
 
 cat_cols = [
+
     "Car_Name",
     "Fuel_Type",
     "Seller_Type",
     "Transmission"
+
 ]
 
 num_cols = [
+
     "Present_Price",
     "Kms_Driven",
     "Owner",
     "Car_Age"
+
 ]
+
 
 preprocessor = ColumnTransformer(
     transformers=[
+
         (
             "cat",
-            OneHotEncoder(handle_unknown='ignore'),
+
+            OneHotEncoder(
+                handle_unknown='ignore'
+            ),
+
             cat_cols
         ),
+
         (
             "num",
+
             "passthrough",
+
             num_cols
         )
+
     ]
 )
 
+
 model = Pipeline([
-    ("prep", preprocessor),
-    ("reg", LinearRegression())
+
+    (
+        "prep",
+        preprocessor
+    ),
+
+    (
+        "reg",
+        LinearRegression()
+    )
+
 ])
 
+
 X_train, X_test, y_train, y_test = train_test_split(
+
     X,
     y,
+
     test_size=0.2,
+
     random_state=42
+
 )
 
-progress_bar("Training Model")
 
-model.fit(X_train, y_train)
+progress_bar(
+    "Training Model"
+)
 
-progress_bar("Generating Predictions")
+model.fit(
+    X_train,
+    y_train
+)
 
-y_pred = model.predict(X_test)
 
-print("\n===== TRAINING LOGS =====")
+progress_bar(
+    "Evaluating Model"
+)
+
+y_pred = model.predict(
+    X_test
+)
+
+
+print("\n===== MODEL LOGS =====")
 
 print(
     "R2 Score:",
     round(
-        r2_score(y_test, y_pred),
+        r2_score(
+            y_test,
+            y_pred
+        ),
         3
     )
 )
@@ -116,47 +190,225 @@ print(
     )
 )
 
-print("\n===== VEHICLE RECOMMENDATION =====")
 
-low = float(input("Minimum budget: "))
-high = float(input("Maximum budget: "))
+print(
+    "\n===== FIND CARS ====="
+)
 
-fuel = input(
-    "Fuel Type(Petrol/Diesel/CNG): "
-).strip().lower()
+low = float(
+    input(
+        "Minimum Budget: "
+    )
+)
 
-trans = input(
-    "Transmission(Manual/Automatic): "
-).strip().lower()
+high = float(
+    input(
+        "Maximum Budget: "
+    )
+)
 
-progress_bar("Searching Cars", 25, 0.04)
+progress_bar(
+    "Searching Cars",
+    20
+)
 
-suggest = df[
-    (df['Selling_Price'] >= low) &
-    (df['Selling_Price'] <= high) &
-    (df['Fuel_Type'].str.lower() == fuel) &
-    (df['Transmission'].str.lower() == trans)
+
+# Filter by price range
+cars = df[
+    (df["Selling_Price"] >= low)
+    &
+    (df["Selling_Price"] <= high)
 ]
 
-suggest = suggest[
-    ['Car_Name', 'Selling_Price']
-].drop_duplicates()
 
-if len(suggest) > 0:
+# Keep full row + sort by lower KM first
+cars = cars.sort_values(
+    by="Kms_Driven",
+    ascending=True
+).reset_index(drop=True)
 
-    print("\nSuggested Cars:\n")
 
-    for _, row in suggest.head(5).iterrows():
+if len(cars) == 0:
 
-        print(
-            row['Car_Name'],
-            "-",
-            round(
-                row['Selling_Price'],
-                2
-            ),
-            "Lakhs"
+    print(
+        "\nNo cars found"
+    )
+
+    exit()
+
+
+print(
+    "\nAvailable Cars (Lower KM first):\n"
+)
+
+
+for i, row in cars.iterrows():
+
+    print(
+
+        i + 1,
+
+        ".",
+
+        row["Car_Name"],
+
+        "-",
+
+        round(
+            row["Selling_Price"],
+            2
+        ),
+
+        "Lakhs",
+
+        "| KM Driven:",
+
+        int(
+            row["Kms_Driven"]
         )
 
-else:
-    print("No matches found")
+    )
+
+
+choice = int(
+    input(
+        "\nSelect car number: "
+    )
+)
+
+
+selected = cars.iloc[
+    choice - 1
+]
+
+
+annual_run = int(
+    input(
+        "\nAnnual Running (km/year): "
+    )
+)
+
+
+progress_bar(
+    "Generating 5-Year Forecast",
+    25
+)
+
+
+print(
+    "\n===== NEXT 5 YEAR FORECAST ====="
+)
+
+
+base_age = selected[
+    "Car_Age"
+]
+
+base_kms = selected[
+    "Kms_Driven"
+]
+
+present = selected[
+    "Present_Price"
+]
+
+
+for year in range(1,6):
+
+    future_kms = (
+
+        base_kms +
+
+        annual_run * year
+
+    )
+
+
+    temp = pd.DataFrame([{
+
+        "Car_Name":
+        selected["Car_Name"],
+
+        "Present_Price":
+        selected["Present_Price"],
+
+        "Kms_Driven":
+        future_kms,
+
+        "Fuel_Type":
+        selected["Fuel_Type"],
+
+        "Seller_Type":
+        selected["Seller_Type"],
+
+        "Transmission":
+        selected["Transmission"],
+
+        "Owner":
+        selected["Owner"],
+
+        "Car_Age":
+        base_age + year
+
+    }])
+
+
+    # Uses TRAINED MODEL
+    predicted_dep = model.predict(
+        temp
+    )[0]
+
+
+    future_value = (
+
+        present -
+
+        predicted_dep
+
+    )
+
+
+    if future_value < 0:
+
+        future_value = 0
+
+
+    print(
+        "\nYear:",
+        year
+    )
+
+    print(
+        "Car Age:",
+        base_age + year
+    )
+
+    print(
+        "KM Driven:",
+        int(
+            future_kms
+        )
+    )
+
+    print(
+        "Predicted Depreciation:",
+        round(
+            predicted_dep,
+            2
+        ),
+        "Lakhs"
+    )
+
+    print(
+        "Estimated Car Value:",
+        round(
+            future_value,
+            2
+        ),
+        "Lakhs"
+    )
+
+
+print(
+    "\nForecast Completed ✓"
+)
